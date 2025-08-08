@@ -32,7 +32,7 @@ OpenBiologist is an innovative MCP (Model Context Protocol) application that bri
 ## 📊 Roadmap
 
 - [ ] **Phase 1**: Core MCP WhatsApp bot
-  - [] Basic project structure
+  - [ ] Basic project structure
   - [ ] WhatsApp Business API integration
   - [ ] MCP protocol implementation
   - [ ] Basic biological database queries
