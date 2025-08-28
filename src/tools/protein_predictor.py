@@ -1,12 +1,12 @@
 from typing import Annotated
 from pydantic import Field
 from src.utils.models import RichToolDescription
-from src.services.protein_predictor import protein_service
+from src.services.local_protein_predictor import local_protein_service
 
 ProteinStructurePredictionDescription = RichToolDescription(
-    description="Predict 3D protein structure from amino acid sequence using advanced AI models",
+    description="Predict 3D protein structure from amino acid sequence using local AI models",
     use_when="Use this when user provides a protein sequence and wants to predict its 3D structure",
-    side_effects="Submits prediction job to external service and may take several minutes to complete",
+    side_effects="Submits prediction job to local protein folding service and may take several minutes to complete",
 )
 
 async def predict_protein_structure(
@@ -15,9 +15,9 @@ async def predict_protein_structure(
     wait_for_completion: Annotated[bool, Field(description="Wait for prediction to complete (may take 5-10 minutes)")] = False,
 ) -> str:
     """
-    Predict 3D protein structure from amino acid sequence.
+    Predict 3D protein structure from amino acid sequence using local AI models.
     
-    This tool uses state-of-the-art AI models to predict the 3D structure of proteins
+    This tool uses a simplified ESMFold implementation running locally to predict the 3D structure of proteins
     from their amino acid sequences. The prediction includes:
     - 3D coordinates in PDB format
     - Confidence scores (pLDDT)
@@ -33,24 +33,25 @@ async def predict_protein_structure(
     """
     
     # Validate sequence
-    validation = await protein_service.validate_sequence(sequence)
+    validation = await local_protein_service.validate_sequence(sequence)
     if not validation["valid"]:
         return f"❌ **Sequence Validation Error**: {validation['error']}"
     
     # Submit prediction
-    response = await protein_service.submit_prediction(sequence, job_name)
+    response = await local_protein_service.submit_prediction(sequence, job_name)
     
     if response.status == "error":
         return f"❌ **Prediction Error**: {response.message}"
     
     # Format initial response
-    result = f"""🧬 **Protein Structure Prediction Submitted**
+    result = f"""🧬 **Protein Structure Prediction Submitted (Local AI Model)**
 
 **Job ID**: `{response.job_id}`
 **Job Name**: {job_name}
 **Sequence Length**: {validation['length']} amino acids
 **Status**: {response.status}
 **Estimated Time**: {response.estimated_time} seconds
+**Service**: Local ESMFold Implementation
 
 **Sequence Analysis**:
 - **Length**: {validation['length']} residues
@@ -70,7 +71,7 @@ async def predict_protein_structure(
     # Wait for completion
     result += "\n⏳ **Waiting for prediction to complete...**\n"
     
-    status = await protein_service.wait_for_completion(response.job_id)
+    status = await local_protein_service.wait_for_completion(response.job_id)
     
     if status.status == "successful":
         result += f"""
@@ -128,7 +129,7 @@ async def check_protein_prediction_status(
         Current status and results if available
     """
     
-    status = await protein_service.check_status(job_id)
+    status = await local_protein_service.check_status(job_id)
     
     if status.status == "pending":
         return f"""⏳ **Prediction Status: Pending**

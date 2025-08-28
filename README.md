@@ -24,9 +24,10 @@ OpenBiologist is an innovative MCP (Model Context Protocol) application that bri
    cp .env.example .env
    ```
 
-4. **Start the MCP server**
+4. **Start all services (recommended)**
    ```bash
-   python app.py
+   # Start both backend and MCP server
+   ./run_openbiologist.sh
    ```
 
 ## 📊 Roadmap
@@ -35,11 +36,11 @@ OpenBiologist is an innovative MCP (Model Context Protocol) application that bri
   - [x] Basic project structure
   - [x] WhatsApp Business API integration
   - [x] MCP protocol implementation
-  - [ ] Basic biological database queries
+  - [x] Basic biological database queries
 
-- [ ] **Phase 2**: Advanced biological features
-  - [ ] Sequence analysis and comparison
-  - [ ] Protein structure prediction
+- [x] **Phase 2**: Advanced biological features
+  - [x] Sequence analysis and comparison
+  - [x] Protein structure prediction using local AI models (Simplified ESMFold)
   - [ ] Research paper search and summarization
 
 ## 🏆 PuchAI Hackathon

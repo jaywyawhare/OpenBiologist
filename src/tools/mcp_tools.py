@@ -3,6 +3,20 @@ from src.tools.job_finder import job_finder, JobFinderDescription
 from src.tools.image_processor import make_img_black_and_white, MAKE_IMG_BLACK_AND_WHITE_DESCRIPTION
 from src.tools.protein_predictor import predict_protein_structure, check_protein_prediction_status, ProteinStructurePredictionDescription
 from src.tools.bio_database_search import search_protein_database, BioDatabaseSearchDescription
+from src.utils.models import RichToolDescription
+from src.datalake import (
+    list_registered_items,
+    list_present_items,
+    download_item,
+    initialize_data_lake,
+)
+
+
+DataLakeDescription = RichToolDescription(
+    description="Manage and access local biomedical data lake items.",
+    use_when="Use to list available data items or download by name.",
+    side_effects="Downloading writes files to the local data directory.",
+)
 
 
 def register_tools(mcp):
@@ -48,3 +62,20 @@ def register_tools(mcp):
         max_results: int = 5,
     ) -> str:
         return await search_protein_database(query, database, max_results)
+
+    # Data lake tools
+    @mcp.tool(description=DataLakeDescription.model_dump_json())
+    async def datalake_list_registered_tool() -> str:
+        return "\n".join(list_registered_items())
+
+    @mcp.tool(description=DataLakeDescription.model_dump_json())
+    async def datalake_list_present_tool() -> str:
+        return "\n".join(list_present_items())
+
+    @mcp.tool(description=DataLakeDescription.model_dump_json())
+    async def datalake_download_tool(name: str) -> str:
+        return download_item(name)
+
+    @mcp.tool(description=DataLakeDescription.model_dump_json())
+    async def datalake_initialize_tool(force: bool = False) -> str:
+        return initialize_data_lake(force=force)

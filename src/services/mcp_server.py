@@ -2,6 +2,8 @@ import os
 from fastmcp import FastMCP
 from src.auth.bearer_provider import SimpleBearerAuthProvider
 
+# MCP server for OpenBiologist with local protein folding capabilities
+
 def create_mcp_server() -> FastMCP:
     """Create and configure the MCP server."""
     token = os.environ.get("AUTH_TOKEN")
