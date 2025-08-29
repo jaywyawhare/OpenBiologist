@@ -6,6 +6,7 @@
 
 OpenBiologist is an innovative MCP (Model Context Protocol) application that brings biological research tools directly to WhatsApp. Built for the PuchAI hackathon, this project democratizes access to biological research by allowing users to query databases, analyze sequences, and collaborate on research projects through simple WhatsApp messages.
 
+
 ### Local Development
 
 1. **Clone the repository**
@@ -40,7 +41,7 @@ OpenBiologist is an innovative MCP (Model Context Protocol) application that bri
 
 - [x] **Phase 2**: Advanced biological features
   - [x] Sequence analysis and comparison
-  - [x] Protein structure prediction using local AI models (Simplified ESMFold)
+  - [x] Protein structure prediction using Boltz backend
   - [ ] Research paper search and summarization
 
 ## 🏆 PuchAI Hackathon

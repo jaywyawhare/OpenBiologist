@@ -1,45 +1,42 @@
 """
 Local Protein Predictor Service
-Uses simplified ESMFold implementation for local protein structure prediction
+Supports Boltz backend for local protein structure prediction.
 """
 
 import asyncio
 from typing import Dict, Any
 import logging
 import torch
+import os
 
-from src.fold_models import ESMFold, ESMFoldConfig
+from src.services.boltz_adapter import BoltzPredictor
+
 
 logger = logging.getLogger(__name__)
 
 class LocalProteinStructureService:
-    """Local protein structure prediction service using ESMFold"""
+    """Local protein structure prediction service using Boltz"""
     
     def __init__(self):
         self.model = None
         self._initialize_model()
     
     def _initialize_model(self):
-        """Initialize the ESMFold model"""
+        """Initialize the Boltz predictor"""
         try:
-            logger.info("Initializing ESMFold model...")
-            config = ESMFoldConfig()
-            self.model = ESMFold(config)
-            
-            # Move to GPU if available
-            if torch.cuda.is_available():
-                self.model = self.model.cuda()
-                logger.info("ESMFold model moved to GPU")
-            else:
-                logger.info("ESMFold model running on CPU")
-                
-            logger.info("ESMFold model initialized successfully")
+            logger.info("Initializing Boltz predictor...")
+            self.model = BoltzPredictor()
+            logger.info(
+                "Boltz predictor initialized on %s",
+                "GPU" if torch.cuda.is_available() else "CPU",
+            )
+            logger.info("Boltz predictor initialized successfully")
         except Exception as e:
-            logger.error(f"Failed to initialize ESMFold model: {e}")
+            logger.error(f"Failed to initialize Boltz predictor: {e}")
             self.model = None
     
     async def predict_structure(self, sequence: str) -> Dict[str, Any]:
-        """Predict protein structure directly from sequence"""
+        """Predict protein structure directly from sequence using Boltz"""
         try:
             # Validate sequence
             validation = await self.validate_sequence(sequence)
@@ -49,14 +46,13 @@ class LocalProteinStructureService:
                     "error": validation["error"]
                 }
             
-            # Check if model is available
             if self.model is None:
                 return {
                     "status": "error",
-                    "error": "ESMFold model not available"
+                    "error": "Boltz predictor not available"
                 }
             
-            logger.info(f"Predicting structure for sequence length {len(sequence)}")
+            logger.info(f"Predicting structure (Boltz) for sequence length {len(sequence)}")
             
             # Run prediction
             pdb_content = await self._run_prediction(sequence)
@@ -65,7 +61,7 @@ class LocalProteinStructureService:
                 "status": "success",
                 "pdb_content": pdb_content,
                 "sequence_length": len(sequence),
-                "message": "Structure predicted successfully"
+                "message": "Structure predicted successfully (Boltz)"
             }
             
         except Exception as e:
@@ -76,9 +72,8 @@ class LocalProteinStructureService:
             }
     
     async def _run_prediction(self, sequence: str) -> str:
-        """Run protein structure prediction using ESMFold model"""
+        """Run protein structure prediction using Boltz"""
         try:
-            # Run prediction in thread pool to avoid blocking
             loop = asyncio.get_event_loop()
             pdb_content = await loop.run_in_executor(
                 None, 
@@ -91,13 +86,12 @@ class LocalProteinStructureService:
             raise
     
     def _predict_structure(self, sequence: str) -> str:
-        """Predict protein structure using ESMFold"""
+        """Predict protein structure using Boltz"""
         try:
-            # Use ESMFold's infer_pdb method
-            pdb_content = self.model.infer_pdb(sequence)
-            return pdb_content
+            self.model.eval()
+            return self.model.infer_pdb(sequence)
         except Exception as e:
-            logger.error(f"ESMFold prediction failed: {e}")
+            logger.error(f"Boltz prediction failed: {e}")
             raise
     
     async def validate_sequence(self, sequence: str) -> Dict[str, Any]:
@@ -133,17 +127,16 @@ class LocalProteinStructureService:
                     "status": "unhealthy",
                     "model_loaded": False,
                     "device": "unknown",
-                    "error": "ESMFold model not initialized"
+                    "error": "Boltz predictor not initialized"
                 }
             
-            # Check if model is on GPU
-            device_info = "GPU" if self.model.device.type == "cuda" else "CPU"
+            device_info = "GPU" if torch.cuda.is_available() else "CPU"
             
             return {
                 "status": "healthy",
                 "model_loaded": True,
                 "device": device_info,
-                "message": "Ready for protein structure prediction"
+                "message": "Ready for protein structure prediction (Boltz)"
             }
         except Exception as e:
             return {

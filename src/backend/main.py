@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 # Initialize FastAPI app
 app = FastAPI(
     title="OpenBiologist Protein Folding API",
-    description="REST API for protein structure prediction using ESMFold",
+    description="REST API for protein structure prediction using Boltz",
     version="1.0.0"
 )
 
@@ -154,9 +154,9 @@ async def get_available_models():
     return {
         "models": [
             {
-                "name": "ESMFold",
-                "type": "esmfold",
-                "description": "ESM-2 based protein structure prediction",
+                "name": "Boltz",
+                "type": "boltz",
+                "description": "Boltz protein structure prediction (no MSA by default)",
                 "supported_sequences": "10-2000 amino acids",
                 "estimated_time": "3-10 minutes"
             }

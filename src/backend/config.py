@@ -16,7 +16,7 @@ class BackendConfig(BaseSettings):
     
     # API configuration
     title: str = "OpenBiologist Protein Folding API"
-    description: str = "REST API for protein structure prediction using ESMFold"
+    description: str = "REST API for protein structure prediction using Boltz"
     version: str = "1.0.0"
     
     # CORS configuration
@@ -36,7 +36,7 @@ class BackendConfig(BaseSettings):
     results_directory: str = "protein_folding_results"
     
     # Model configuration
-    default_model_type: str = "esmfold"
+    default_model_type: str = "boltz"
     gpu_enabled: bool = True
     model_download_path: Optional[str] = None
     

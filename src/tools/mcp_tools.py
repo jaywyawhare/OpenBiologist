@@ -12,8 +12,8 @@ import base64
 
 # Protein Folding Tool Descriptions
 ProteinFoldingDescription = RichToolDescription(
-    description="Predict protein 3D structure from amino acid sequence using local ESMFold model.",
-    use_when="Use to predict protein 3D structure from amino acid sequence using local AI models.",
+    description="Predict protein 3D structure from amino acid sequence using Boltz.",
+    use_when="Use to predict protein 3D structure from amino acid sequence using Boltz backend.",
     side_effects="Generates protein structure prediction and returns PDB content directly.",
 )
 
@@ -83,7 +83,7 @@ def register_tools(mcp):
 📋 **Prediction Details:**
 • Sequence Length: {result['sequence_length']} amino acids
 • Status: **{result['status'].upper()}**
-• Model: ESMFold (ESM-2 based)
+• Model: Boltz
 
 📊 **Results:**
 • PDB Content Length: {len(result.get('pdb_content', ''))} characters
@@ -118,7 +118,7 @@ def register_tools(mcp):
 📋 **Prediction Details:**
 • Sequence Length: {result['sequence_length']} amino acids
 • Status: **{result['status'].upper()}**
-• Model: ESMFold (ESM-2 based)
+• Model: Boltz
 
 📊 **Results:**
 • PDB Content Length: {len(result.get('pdb_content', ''))} characters
