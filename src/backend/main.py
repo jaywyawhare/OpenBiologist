@@ -142,14 +142,14 @@ async def predict_protein_structure(
         elif isinstance(request, FASTAInputRequest):
             # FASTA format input
             logger.info(f"Received FASTA format request")
-            result = await service.predict_structure_fasta(request.fasta_content, request.use_msa_server)
+            result = await service.predict_structure_fasta(request.fasta_content)
             input_format = "fasta"
             chains_processed = result.get("chains_processed", 1)
             
         elif isinstance(request, YAMLInputRequest):
             # YAML format input
             logger.info(f"Received YAML format request with {len(request.chains)} chains")
-            result = await service.predict_structure_yaml(request.chains, request.use_msa_server)
+            result = await service.predict_structure_yaml(request.chains)
             input_format = "yaml"
             chains_processed = len(request.chains)
             
@@ -180,9 +180,35 @@ async def predict_protein_structure(
         )
 
 @app.post("/predict/fasta")
+async def predict_from_fasta(
+    fasta_content: str = Form(..., description="FASTA content as string"),
+    service: LocalProteinStructureService = Depends(get_healthy_service)
+):
+    """Predict protein structure from FASTA string content"""
+    try:
+        logger.info(f"Received FASTA string input")
+        result = await service.predict_structure_fasta(fasta_content)
+        
+        if result["status"] == "success":
+            return ProteinPredictionResponse(
+                status="success",
+                pdb_content=result["pdb_content"],
+                sequence_length=result["sequence_length"],
+                message=result["message"],
+                input_format="fasta_string",
+                chains_processed=result.get("chains_processed", 1),
+                warnings=result.get("warnings")
+            )
+        else:
+            raise HTTPException(status_code=400, detail=result["error"])
+            
+    except Exception as e:
+        logger.error(f"FASTA prediction failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
+
+@app.post("/predict/fasta/file")
 async def predict_from_fasta_file(
     fasta_file: UploadFile = File(...),
-    use_msa_server: bool = Form(True),
     service: LocalProteinStructureService = Depends(get_healthy_service)
 ):
     """Predict protein structure from uploaded FASTA file"""
@@ -194,7 +220,7 @@ async def predict_from_fasta_file(
         fasta_content = content.decode('utf-8')
         
         logger.info(f"Received FASTA file upload: {fasta_file.filename}")
-        result = await service.predict_structure_fasta(fasta_content, use_msa_server)
+        result = await service.predict_structure_fasta(fasta_content)
         
         if result["status"] == "success":
             return ProteinPredictionResponse(
@@ -214,9 +240,45 @@ async def predict_from_fasta_file(
         raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
 
 @app.post("/predict/yaml")
+async def predict_from_yaml(
+    yaml_content: str = Form(..., description="YAML content as string"),
+    service: LocalProteinStructureService = Depends(get_healthy_service)
+):
+    """Predict protein structure from YAML string content"""
+    try:
+        # Parse YAML
+        try:
+            data = yaml.safe_load(yaml_content)
+            chains_data = data.get('chains', [])
+            chains = [ProteinChain(**chain) for chain in chains_data]
+        except yaml.YAMLError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid YAML format: {e}")
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid chain data: {e}")
+        
+        logger.info(f"Received YAML string input with {len(chains)} chains")
+        result = await service.predict_structure_yaml(chains)
+        
+        if result["status"] == "success":
+            return ProteinPredictionResponse(
+                status="success",
+                pdb_content=result["pdb_content"],
+                sequence_length=result["sequence_length"],
+                message=result["message"],
+                input_format="yaml_string",
+                chains_processed=len(chains),
+                warnings=result.get("warnings")
+            )
+        else:
+            raise HTTPException(status_code=400, detail=result["error"])
+            
+    except Exception as e:
+        logger.error(f"YAML prediction failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
+
+@app.post("/predict/yaml/file")
 async def predict_from_yaml_file(
     yaml_file: UploadFile = File(...),
-    use_msa_server: bool = Form(True),
     service: LocalProteinStructureService = Depends(get_healthy_service)
 ):
     """Predict protein structure from uploaded YAML file"""
@@ -238,7 +300,7 @@ async def predict_from_yaml_file(
             raise HTTPException(status_code=400, detail=f"Invalid chain data: {e}")
         
         logger.info(f"Received YAML file upload: {yaml_file.filename} with {len(chains)} chains")
-        result = await service.predict_structure_yaml(chains, use_msa_server)
+        result = await service.predict_structure_yaml(chains)
         
         if result["status"] == "success":
             return ProteinPredictionResponse(
@@ -317,10 +379,10 @@ async def get_supported_formats():
                             "chain_id": "A",
                             "entity_type": "protein",
                             "sequence": "MVTPEGNVSLVDESLLVGVTDEDRAVRSAHQFYERLIGLWAPAVMEAAHELGVFAALAEAPADSGELARRLDCDARAMRVLLDALYAYDVIDRIHDTNGFRYLLSAEARECLLPGTLFSLVGKFMHDINVAWPAWRNLAEVVRHGARDTSGAESPNGIAQEDYESLVGGINFWAPPIVTTLSRKLRASGRSGDATASVLDVGCGTGLYSQLLLREFPRWTATGLDVERIATLANAQALRLGVEERFATRAGDFWRGGWGTGYDLVLFANIFHLQTPASAVRLMRHAAACLAPDGLVAVVDQIVDADREPKTPQDRFALLFAASMTNTGGGDAYTFQEYEEWFTAAGLQRIETLDTPMHRILLARRATEPSAVPEGQASENLYFQ",
-                            "msa_path": null
+                            "msa_path": None
                         }
                     ],
-                    "use_msa_server": true
+                    "use_msa_server": True
                 }
             }
         }

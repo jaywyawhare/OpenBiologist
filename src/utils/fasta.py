@@ -32,7 +32,7 @@ def parse_and_fix_fasta(text: str) -> Tuple[str, str, List[str]]:
     Returns (header, fixed_sequence, warnings).
     """
     warnings: List[str] = []
-    header = "query"
+    header = "A"  # Default chain ID for raw sequences
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     if not lines:
         return header, "", ["Empty input"]
@@ -48,7 +48,7 @@ def parse_and_fix_fasta(text: str) -> Tuple[str, str, List[str]]:
                 if entity_type == "protein":
                     header = chain_id
                     if len(parts) > 2 and parts[2].strip() != "empty":
-                        warnings.append(f"MSA path '{parts[2]}' ignored (using MSA server)")
+                        warnings.append(f"MSA path '{parts[2]}' ignored (running in single sequence mode)")
                 else:
                     warnings.append(f"Entity type '{entity_type}' not yet supported, treating as protein")
                     header = chain_id
@@ -58,7 +58,9 @@ def parse_and_fix_fasta(text: str) -> Tuple[str, str, List[str]]:
             header = header_line
         seq_raw = "".join(lines[1:])
     else:
+        # No header - treat as raw sequence
         seq_raw = "".join(lines)
+        warnings.append("No FASTA header found, treating as raw protein sequence")
 
     seq, ws = sanitize_sequence(seq_raw)
     warnings.extend(ws)

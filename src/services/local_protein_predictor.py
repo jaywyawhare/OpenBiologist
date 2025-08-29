@@ -64,8 +64,8 @@ class LocalProteinStructureService:
             # Use Boltz FASTA format for better compatibility
             fixed_fasta = format_boltz_fasta(header, fixed_seq)
 
-            # Run prediction on cleaned sequence
-            pdb_content = await self._run_prediction(fixed_seq)
+            # Run prediction on cleaned sequence with proper chain ID
+            pdb_content = await self._run_prediction(fixed_seq, header)
             
             return {
                 "status": "success",
@@ -81,30 +81,31 @@ class LocalProteinStructureService:
                 "error": f"Prediction failed: {str(e)}"
             }
     
-    async def _run_prediction(self, sequence: str) -> str:
+    async def _run_prediction(self, sequence: str, chain_id: str = "A") -> str:
         """Run protein structure prediction using Boltz"""
         try:
             loop = asyncio.get_event_loop()
             pdb_content = await loop.run_in_executor(
                 None, 
                 self._predict_structure, 
-                sequence
+                sequence,
+                chain_id
             )
             return pdb_content
         except Exception as e:
             logger.error(f"Prediction failed: {e}")
             raise
     
-    def _predict_structure(self, sequence: str) -> str:
+    def _predict_structure(self, sequence: str, chain_id: str = "A") -> str:
         """Predict protein structure using Boltz"""
         try:
             self.model.eval()
-            return self.model.infer_pdb(sequence)
+            return self.model.infer_pdb(sequence, chain_id)
         except Exception as e:
             logger.error(f"Boltz prediction failed: {e}")
             raise
     
-    async def predict_structure_fasta(self, fasta_content: str, use_msa_server: bool = True) -> Dict[str, Any]:
+    async def predict_structure_fasta(self, fasta_content: str) -> Dict[str, Any]:
         """Predict protein structure from FASTA format content"""
         try:
             # Parse FASTA content
@@ -132,8 +133,8 @@ class LocalProteinStructureService:
             boltz_fasta = format_boltz_fasta(header, sequence)
             logger.debug(f"Generated Boltz FASTA: {boltz_fasta}")
             
-            # Run prediction
-            pdb_content = await self._run_prediction(sequence)
+            # Run prediction with proper chain ID
+            pdb_content = await self._run_prediction(sequence, header)
             
             return {
                 "status": "success",
@@ -151,7 +152,7 @@ class LocalProteinStructureService:
                 "error": f"FASTA prediction failed: {str(e)}"
             }
 
-    async def predict_structure_yaml(self, chains: List[Dict[str, Any]], use_msa_server: bool = True) -> Dict[str, Any]:
+    async def predict_structure_yaml(self, chains: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Predict protein structure from YAML chain definitions"""
         try:
             if not chains:
@@ -186,8 +187,9 @@ class LocalProteinStructureService:
             
             logger.info(f"Predicting structure from YAML (Boltz) for sequence length {len(sequence)}")
             
-            # Run prediction
-            pdb_content = await self._run_prediction(sequence)
+            # Run prediction with chain ID from YAML
+            chain_id = chain.get("chain_id", "A")
+            pdb_content = await self._run_prediction(sequence, chain_id)
             
             warnings = []
             if len(protein_chains) > 1:
