@@ -4,11 +4,13 @@ Provides REST API endpoints for protein structure prediction
 """
 
 import logging
-from typing import Dict, Any, Optional
+import yaml
+from typing import Dict, Any, Optional, List, Union
+from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 
 from src.services.local_protein_predictor import LocalProteinStructureService
 
@@ -36,14 +38,44 @@ app.add_middleware(
 )
 
 # Pydantic models for API requests/responses
-class ProteinPredictionRequest(BaseModel):
-    sequence: str = Field(..., description="Protein amino acid sequence", min_length=10, max_length=2000)
+class ProteinChain(BaseModel):
+    chain_id: str = Field(..., description="Unique identifier for the chain")
+    entity_type: str = Field(..., description="Type: protein, dna, rna, smiles, ccd")
+    sequence: str = Field(..., description="Sequence data (amino acids, nucleotides, SMILES, or CCD code)")
+    msa_path: Optional[str] = Field(None, description="Path to MSA file (.a3m or .csv) for proteins")
+    
+    @validator('entity_type')
+    def validate_entity_type(cls, v):
+        valid_types = ['protein', 'dna', 'rna', 'smiles', 'ccd']
+        if v not in valid_types:
+            raise ValueError(f'entity_type must be one of {valid_types}')
+        return v
+
+class YAMLInputRequest(BaseModel):
+    chains: List[ProteinChain] = Field(..., description="List of protein chains and ligands")
+    use_msa_server: bool = Field(True, description="Use MSA server for proteins without custom MSA")
+    
+    @validator('chains')
+    def validate_chains(cls, v):
+        if not v:
+            raise ValueError('At least one chain must be provided')
+        return v
+
+class FASTAInputRequest(BaseModel):
+    fasta_content: str = Field(..., description="FASTA format content with chain headers")
+    use_msa_server: bool = Field(True, description="Use MSA server for proteins without custom MSA")
+
+class SimpleSequenceRequest(BaseModel):
+    sequence: str = Field(..., description="Simple protein amino acid sequence", min_length=10, max_length=2000)
 
 class ProteinPredictionResponse(BaseModel):
     status: str
     pdb_content: str
     sequence_length: int
     message: str
+    input_format: str
+    chains_processed: int
+    warnings: Optional[List[str]] = None
 
 class ErrorResponse(BaseModel):
     status: str
@@ -95,22 +127,44 @@ async def root():
 
 @app.post("/predict", response_model=ProteinPredictionResponse)
 async def predict_protein_structure(
-    request: ProteinPredictionRequest,
+    request: Union[YAMLInputRequest, FASTAInputRequest, SimpleSequenceRequest] = None,
     service: LocalProteinStructureService = Depends(get_healthy_service)
 ):
-    """Predict protein structure from amino acid sequence"""
+    """Predict protein structure from various input formats"""
     try:
-        logger.info(f"Received prediction request for sequence length {len(request.sequence)}")
-        
-        # Run prediction
-        result = await service.predict_structure(request.sequence)
+        if isinstance(request, SimpleSequenceRequest):
+            # Simple sequence input (backward compatibility)
+            logger.info(f"Received simple sequence request for length {len(request.sequence)}")
+            result = await service.predict_structure(request.sequence)
+            input_format = "simple_sequence"
+            chains_processed = 1
+            
+        elif isinstance(request, FASTAInputRequest):
+            # FASTA format input
+            logger.info(f"Received FASTA format request")
+            result = await service.predict_structure_fasta(request.fasta_content, request.use_msa_server)
+            input_format = "fasta"
+            chains_processed = result.get("chains_processed", 1)
+            
+        elif isinstance(request, YAMLInputRequest):
+            # YAML format input
+            logger.info(f"Received YAML format request with {len(request.chains)} chains")
+            result = await service.predict_structure_yaml(request.chains, request.use_msa_server)
+            input_format = "yaml"
+            chains_processed = len(request.chains)
+            
+        else:
+            raise HTTPException(status_code=400, detail="Invalid request format")
         
         if result["status"] == "success":
             return ProteinPredictionResponse(
                 status="success",
                 pdb_content=result["pdb_content"],
                 sequence_length=result["sequence_length"],
-                message=result["message"]
+                message=result["message"],
+                input_format=input_format,
+                chains_processed=chains_processed,
+                warnings=result.get("warnings")
             )
         else:
             raise HTTPException(
@@ -124,6 +178,84 @@ async def predict_protein_structure(
             status_code=500,
             detail=f"Prediction failed: {str(e)}"
         )
+
+@app.post("/predict/fasta")
+async def predict_from_fasta_file(
+    fasta_file: UploadFile = File(...),
+    use_msa_server: bool = Form(True),
+    service: LocalProteinStructureService = Depends(get_healthy_service)
+):
+    """Predict protein structure from uploaded FASTA file"""
+    try:
+        if not fasta_file.filename.endswith(('.fasta', '.fa', '.txt')):
+            raise HTTPException(status_code=400, detail="File must be .fasta, .fa, or .txt")
+        
+        content = await fasta_file.read()
+        fasta_content = content.decode('utf-8')
+        
+        logger.info(f"Received FASTA file upload: {fasta_file.filename}")
+        result = await service.predict_structure_fasta(fasta_content, use_msa_server)
+        
+        if result["status"] == "success":
+            return ProteinPredictionResponse(
+                status="success",
+                pdb_content=result["pdb_content"],
+                sequence_length=result["sequence_length"],
+                message=result["message"],
+                input_format="fasta_file",
+                chains_processed=result.get("chains_processed", 1),
+                warnings=result.get("warnings")
+            )
+        else:
+            raise HTTPException(status_code=400, detail=result["error"])
+            
+    except Exception as e:
+        logger.error(f"FASTA file prediction failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
+
+@app.post("/predict/yaml")
+async def predict_from_yaml_file(
+    yaml_file: UploadFile = File(...),
+    use_msa_server: bool = Form(True),
+    service: LocalProteinStructureService = Depends(get_healthy_service)
+):
+    """Predict protein structure from uploaded YAML file"""
+    try:
+        if not yaml_file.filename.endswith(('.yaml', '.yml')):
+            raise HTTPException(status_code=400, detail="File must be .yaml or .yml")
+        
+        content = await yaml_file.read()
+        yaml_content = content.decode('utf-8')
+        
+        # Parse YAML
+        try:
+            data = yaml.safe_load(yaml_content)
+            chains_data = data.get('chains', [])
+            chains = [ProteinChain(**chain) for chain in chains_data]
+        except yaml.YAMLError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid YAML format: {e}")
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid chain data: {e}")
+        
+        logger.info(f"Received YAML file upload: {yaml_file.filename} with {len(chains)} chains")
+        result = await service.predict_structure_yaml(chains, use_msa_server)
+        
+        if result["status"] == "success":
+            return ProteinPredictionResponse(
+                status="success",
+                pdb_content=result["pdb_content"],
+                sequence_length=result["sequence_length"],
+                message=result["message"],
+                input_format="yaml_file",
+                chains_processed=len(chains),
+                warnings=result.get("warnings")
+            )
+        else:
+            raise HTTPException(status_code=400, detail=result["error"])
+            
+    except Exception as e:
+        logger.error(f"YAML file prediction failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check(
@@ -158,9 +290,40 @@ async def get_available_models():
                 "type": "boltz",
                 "description": "Boltz protein structure prediction (no MSA by default)",
                 "supported_sequences": "10-2000 amino acids",
+                "supported_formats": ["simple_sequence", "fasta", "yaml"],
                 "estimated_time": "3-10 minutes"
             }
         ]
+    }
+
+@app.get("/formats")
+async def get_supported_formats():
+    """Get information about supported input formats"""
+    return {
+        "formats": {
+            "simple_sequence": {
+                "description": "Plain amino acid sequence",
+                "example": "MVTPEGNVSLVDESLLVGVTDEDRAVRSAHQFYERLIGLWAPAVMEAAHELGVFAALAEAPADSGELARRLDCDARAMRVLLDALYAYDVIDRIHDTNGFRYLLSAEARECLLPGTLFSLVGKFMHDINVAWPAWRNLAEVVRHGARDTSGAESPNGIAQEDYESLVGGINFWAPPIVTTLSRKLRASGRSGDATASVLDVGCGTGLYSQLLLREFPRWTATGLDVERIATLANAQALRLGVEERFATRAGDFWRGGWGTGYDLVLFANIFHLQTPASAVRLMRHAAACLAPDGLVAVVDQIVDADREPKTPQDRFALLFAASMTNTGGGDAYTFQEYEEWFTAAGLQRIETLDTPMHRILLARRATEPSAVPEGQASENLYFQ"
+            },
+            "fasta": {
+                "description": "FASTA format with chain headers",
+                "example": ">A|protein|empty\nMVTPEGNVSLVDESLLVGVTDEDRAVRSAHQFYERLIGLWAPAVMEAAHELGVFAALAEAPADSGELARRLDCDARAMRVLLDALYAYDVIDRIHDTNGFRYLLSAEARECLLPGTLFSLVGKFMHDINVAWPAWRNLAEVVRHGARDTSGAESPNGIAQEDYESLVGGINFWAPPIVTTLSRKLRASGRSGDATASVLDVGCGTGLYSQLLLREFPRWTATGLDVERIATLANAQALRLGVEERFATRAGDFWRGGWGTGYDLVLFANIFHLQTPASAVRLMRHAAACLAPDGLVAVVDQIVDADREPKTPQDRFALLFAASMTNTGGGDAYTFQEYEEWFTAAGLQRIETLDTPMHRILLARRATEPSAVPEGQASENLYFQ"
+            },
+            "yaml": {
+                "description": "YAML format with structured chain definitions",
+                "example": {
+                    "chains": [
+                        {
+                            "chain_id": "A",
+                            "entity_type": "protein",
+                            "sequence": "MVTPEGNVSLVDESLLVGVTDEDRAVRSAHQFYERLIGLWAPAVMEAAHELGVFAALAEAPADSGELARRLDCDARAMRVLLDALYAYDVIDRIHDTNGFRYLLSAEARECLLPGTLFSLVGKFMHDINVAWPAWRNLAEVVRHGARDTSGAESPNGIAQEDYESLVGGINFWAPPIVTTLSRKLRASGRSGDATASVLDVGCGTGLYSQLLLREFPRWTATGLDVERIATLANAQALRLGVEERFATRAGDFWRGGWGTGYDLVLFANIFHLQTPASAVRLMRHAAACLAPDGLVAVVDQIVDADREPKTPQDRFALLFAASMTNTGGGDAYTFQEYEEWFTAAGLQRIETLDTPMHRILLARRATEPSAVPEGQASENLYFQ",
+                            "msa_path": null
+                        }
+                    ],
+                    "use_msa_server": true
+                }
+            }
+        }
     }
 
 if __name__ == "__main__":

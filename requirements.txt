@@ -3,6 +3,7 @@ fastmcp>=2.11.2
 pydantic>=2.0.0
 fastapi
 uvicorn==0.24.0
+pyyaml>=6.0
 
 # HTTP and web scraping
 httpx>=0.24.0
@@ -15,13 +16,17 @@ readabilipy>=0.3.0
 # Image processing
 pillow>=11.3.0
 
-# Protein folding dependencies
-torch>=2.0.0
+# Protein folding dependencies (Boltz)
+torch>=2.1.0
 numpy>=1.24.0
 scipy>=1.10.0
-dm-tree>=1.1.0
 einops>=0.6.0
-fair-esm>=0.3.0
+boltz>=0.2.0
+pytorch-lightning>=2.5.0
+torchmetrics>=1.4.0
+triton==3.3.0
+click>=8.1.0
+tqdm>=4.66.0
 
 # Bio libraries
 biopython==1.79

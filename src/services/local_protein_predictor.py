@@ -10,6 +10,8 @@ import torch
 import os
 
 from src.services.boltz_adapter import BoltzPredictor
+from src.utils.fasta import parse_and_fix_fasta, format_fasta, format_boltz_fasta
+from typing import List
 
 
 logger = logging.getLogger(__name__)
@@ -54,8 +56,16 @@ class LocalProteinStructureService:
             
             logger.info(f"Predicting structure (Boltz) for sequence length {len(sequence)}")
             
-            # Run prediction
-            pdb_content = await self._run_prediction(sequence)
+            # Fix/normalize FASTA: accept raw sequence or FASTA, sanitize chars
+            header, fixed_seq, warns = parse_and_fix_fasta(sequence)
+            if not fixed_seq:
+                return {"status": "error", "error": "Invalid or empty sequence after sanitization"}
+
+            # Use Boltz FASTA format for better compatibility
+            fixed_fasta = format_boltz_fasta(header, fixed_seq)
+
+            # Run prediction on cleaned sequence
+            pdb_content = await self._run_prediction(fixed_seq)
             
             return {
                 "status": "success",
@@ -94,6 +104,111 @@ class LocalProteinStructureService:
             logger.error(f"Boltz prediction failed: {e}")
             raise
     
+    async def predict_structure_fasta(self, fasta_content: str, use_msa_server: bool = True) -> Dict[str, Any]:
+        """Predict protein structure from FASTA format content"""
+        try:
+            # Parse FASTA content
+            header, sequence, warnings = parse_and_fix_fasta(fasta_content)
+            if not sequence:
+                return {"status": "error", "error": "Invalid or empty sequence after parsing FASTA"}
+            
+            # Validate sequence
+            validation = await self.validate_sequence(sequence)
+            if not validation["valid"]:
+                return {
+                    "status": "error",
+                    "error": validation["error"]
+                }
+            
+            if self.model is None:
+                return {
+                    "status": "error",
+                    "error": "Boltz predictor not available"
+                }
+            
+            logger.info(f"Predicting structure from FASTA (Boltz) for sequence length {len(sequence)}")
+            
+            # Create Boltz-compatible FASTA format
+            boltz_fasta = format_boltz_fasta(header, sequence)
+            logger.debug(f"Generated Boltz FASTA: {boltz_fasta}")
+            
+            # Run prediction
+            pdb_content = await self._run_prediction(sequence)
+            
+            return {
+                "status": "success",
+                "pdb_content": pdb_content,
+                "sequence_length": len(sequence),
+                "message": "Structure predicted successfully from FASTA (Boltz)",
+                "chains_processed": 1,
+                "warnings": warnings
+            }
+            
+        except Exception as e:
+            logger.error(f"FASTA prediction failed: {e}")
+            return {
+                "status": "error",
+                "error": f"FASTA prediction failed: {str(e)}"
+            }
+
+    async def predict_structure_yaml(self, chains: List[Dict[str, Any]], use_msa_server: bool = True) -> Dict[str, Any]:
+        """Predict protein structure from YAML chain definitions"""
+        try:
+            if not chains:
+                return {"status": "error", "error": "No chains provided"}
+            
+            # For now, we'll process the first protein chain
+            # TODO: Implement multi-chain and ligand support
+            protein_chains = [c for c in chains if c.get("entity_type") == "protein"]
+            if not protein_chains:
+                return {"status": "error", "error": "No protein chains found in YAML input"}
+            
+            # Use the first protein chain for now
+            chain = protein_chains[0]
+            sequence = chain.get("sequence", "")
+            
+            if not sequence:
+                return {"status": "error", "error": "Empty sequence in protein chain"}
+            
+            # Validate sequence
+            validation = await self.validate_sequence(sequence)
+            if not validation["valid"]:
+                return {
+                    "status": "error",
+                    "error": validation["error"]
+                }
+            
+            if self.model is None:
+                return {
+                    "status": "error",
+                    "error": "Boltz predictor not available"
+                }
+            
+            logger.info(f"Predicting structure from YAML (Boltz) for sequence length {len(sequence)}")
+            
+            # Run prediction
+            pdb_content = await self._run_prediction(sequence)
+            
+            warnings = []
+            if len(protein_chains) > 1:
+                warnings.append(f"Only processed first protein chain (A), {len(protein_chains)-1} additional chains ignored")
+            
+            return {
+                "status": "success",
+                "pdb_content": pdb_content,
+                "sequence_length": len(sequence),
+                "message": "Structure predicted successfully from YAML (Boltz)",
+                "chains_processed": len(chains),
+                "warnings": warnings
+            }
+            
+        except Exception as e:
+            logger.error(f"YAML prediction failed: {e}")
+            return {
+                "status": "error",
+                "error": f"YAML prediction failed: {str(e)}"
+            }
+
     async def validate_sequence(self, sequence: str) -> Dict[str, Any]:
         """Validate a protein sequence"""
         # Basic validation
