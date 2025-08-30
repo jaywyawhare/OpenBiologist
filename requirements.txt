@@ -31,6 +31,7 @@ click>=8.1.0
 tqdm>=4.66.0
 
 # Performance optimization libraries
+# Install with: pip install flash-attn --no-build-isolation
 flash-attn>=2.3.0
 apex
 optimum
